@@ -48,7 +48,7 @@ def get_token_from_keychain() -> str | None:
     Reads Claude Code credentials from:
     - macOS: Keychain
     - Windows: Credential Manager
-    - Linux: Not yet supported (use env var)
+    - Linux: ~/.claude/.credentials.json
 
     Returns:
         Token string if found, None otherwise
@@ -60,8 +60,8 @@ def get_token_from_keychain() -> str | None:
     elif system == "Windows":
         return _get_token_from_windows_credential_files()
     else:
-        # Linux: secret-service not yet implemented
-        return None
+        # Linux: Read from credentials file
+        return _get_token_from_linux_credential_files()
 
 
 def _get_token_from_macos_keychain() -> str | None:
@@ -131,6 +131,36 @@ def _get_token_from_windows_credential_files() -> str | None:
         return None
 
 
+def _get_token_from_linux_credential_files() -> str | None:
+    """Get token from Linux credential files.
+
+    Claude Code on Linux stores credentials in ~/.claude/.credentials.json
+    """
+    try:
+        from pathlib import Path
+
+        home = Path.home()
+        cred_paths = [
+            home / ".claude" / ".credentials.json",
+            home / ".claude" / "credentials.json",
+            home / ".config" / "claude" / ".credentials.json",
+            home / ".config" / "claude" / "credentials.json",
+        ]
+
+        for cred_path in cred_paths:
+            if cred_path.exists():
+                with open(cred_path, encoding="utf-8") as f:
+                    data = json.load(f)
+                    token = data.get("claudeAiOauth", {}).get("accessToken")
+                    if token and token.startswith("sk-ant-oat01-"):
+                        return token
+
+        return None
+
+    except (json.JSONDecodeError, KeyError, FileNotFoundError, Exception):
+        return None
+
+
 def get_auth_token() -> str | None:
     """
     Get authentication token from environment variables or system credential store.
@@ -171,7 +201,7 @@ def get_auth_token_source() -> str | None:
         elif system == "Windows":
             return "Windows Credential Files"
         else:
-            return "System Credential Store"
+            return "Linux Credential Files"
 
     return None
 
